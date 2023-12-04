@@ -1,0 +1,164 @@
+﻿@page "/counter"
+@using System.Net.Http
+@using System.Text
+@using Newtonsoft.Json
+@using System.Threading.Tasks
+<PageTitle>Counter</PageTitle>
+
+<h1>Counter</h1>
+
+<p role="status">Current count: 0</p>
+
+<button class="btn btn-primary" @onclick="Authenticate">Generate Payment</button>
+<button @onclick="ShowIframe">Show Iframe</button>
+
+<iframe src="@IframeSourceUrl" style="width: 100%; height: 500px;"></iframe>
+
+@code {
+    private int currentCount = 0;
+
+    @code {
+        private bool iframeVisible;
+        private string apiKey = "Your API Key HERE";
+        public string token;
+        private string authToken; // Replace with your authentication token
+        private string merchantOrderId = "Your Merchant Id Here"; // Replace with your merchant order ID or remove if not needed
+        private int OrderID;
+        public string payToken;
+        public string IframeSourceUrl;
+        
+        public async Task Authenticate()
+        {
+            Console.WriteLine("Test");
+            var client = new HttpClient();
+
+            var request = new
+            {
+                api_key = apiKey
+            };
+
+            var content = new StringContent(JsonConvert.SerializeObject(request), Encoding.UTF8, "application/json");
+
+            var response = await client.PostAsync("https://pakistan.paymob.com/api/auth/tokens", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                var responseObject = JsonConvert.DeserializeObject<dynamic>(responseContent);
+                token = responseObject.token;
+                authToken = token;
+                Console.WriteLine(authToken);
+                CreateOrder();
+                // Now you can use the token for subsequent API calls
+            }
+            else
+            {
+                Console.Write("Errpr");
+                // Handle the error if the request fails
+                token = null;
+            }
+        }
+        private async Task CreateOrder()
+        {
+            Console.WriteLine(authToken);
+            var client = new HttpClient();
+
+            var request = new
+            {
+                auth_token = authToken,
+                delivery_needed = false,
+                amount_cents = 50000, // Replace with the price of the order in cents
+                //currency = "PKR",
+                //merchant_order_id = merchantOrderId, // Include or discard based on your requirement
+                items = new object[]{ },
+            };
+
+            var content = new StringContent(JsonConvert.SerializeObject(request), Encoding.UTF8, "application/json");
+
+            var response = await client.PostAsync("https://pakistan.paymob.com/api/ecommerce/orders", content);
+            Console.WriteLine(response);
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                var responseObject = JsonConvert.DeserializeObject<dynamic>(responseContent);
+
+                // Access and handle specific properties from the response object
+                int orderId = responseObject.id;
+                OrderID = orderId;
+                string createdAt = responseObject.created_at;
+                bool deliveryNeeded = bool.Parse(responseObject.delivery_needed.ToString());
+                // Access nested objects within the response
+                string merchantName = responseObject.merchant.company_name;
+                // For example, displaying retrieved data in the console
+                Console.WriteLine($"Order ID: {orderId}");
+                Console.WriteLine($"Created At: {createdAt}");
+                Console.WriteLine($"Delivery Needed: {deliveryNeeded}");
+                Console.WriteLine($"Merchant Name: {merchantName}");
+                GeneratePaymentKey();
+            }
+            else
+            {
+                Console.WriteLine("Error");
+                // Handle the error if the request fails
+            }
+        }
+
+        private async Task GeneratePaymentKey()
+        {
+            var client = new HttpClient();
+
+            var request = new
+            {
+                auth_token = authToken,
+                amount_cents = "5000", // Replace with the price to be paid in cents
+                expiration = 180, // Replace with the expiration time in seconds
+                order_id = OrderID, // Replace with the ID of the order
+                billing_data = new
+                {
+                    first_name = "John",
+                    last_name = "Doe",
+                    email = "john@example.com",
+                    phone_number = "123456789",
+                    apartment = "803",
+                    floor = "42",
+                    street = "Ethan Land",
+                    building = "8028",
+                    shipping_method = "PKG",
+                    postal_code = "01898",
+                    city = "Jaskolskiburgh",
+                    country = "PK",
+                    state = "Utah",
+                },
+                currency = "PKR", // Replace with the currency related to the payment
+                integration_id = 135990, // Replace with the payment channel identifier
+                lock_order_when_paid = false // Set to true if you want to prevent the order from being paid again after payment
+            };
+
+            var content = new StringContent(JsonConvert.SerializeObject(request), Encoding.UTF8, "application/json");
+
+            var response = await client.PostAsync("https://pakistan.paymob.com/api/acceptance/payment_keys", content);
+            Console.WriteLine(response);
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                var responseObject = JsonConvert.DeserializeObject<dynamic>(responseContent);
+                string paymentToken = responseObject.token; // Assuming 'token' is the property name in the response
+                Console.WriteLine($"Payment Token: {paymentToken}");
+                payToken = paymentToken;
+                ShowIframe();
+                // Handle the payment key or other information from the response as needed
+            }
+            else
+            {
+                // Handle the error if the request fails
+            }
+        }
+        private void ShowIframe()
+        {
+            string IframeSource = $"https://pakistan.paymob.com/api/acceptance/iframes/148638?payment_token={payToken}";
+            IframeSourceUrl = IframeSource;
+            iframeVisible = true;
+        }
+    }
+
+}
